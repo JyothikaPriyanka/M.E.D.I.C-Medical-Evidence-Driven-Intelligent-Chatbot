@@ -1,0 +1,361 @@
+<link href="//maxcdn.bootstrapcdn.com/bootstrap/4.1.1/css/bootstrap.min.css" rel="stylesheet" id="bootstrap-css">
+<script src="//maxcdn.bootstrapcdn.com/bootstrap/4.1.1/js/bootstrap.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>Medical Chatbot</title>
+		<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css" integrity="sha384-MCw98/SFnGE8fJT3GXwEOngsV7Zt27NXFoaoApmYm81iuXoPkFOJwJ8ERdknLPMO" crossorigin="anonymous">
+		<link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.5.0/css/all.css" integrity="sha384-B4dIYHKNBt8Bc12p+WXckhzcICo0wtJAoU8YZTY5qE0Id1GSseTk6S+L3BlXeVIU" crossorigin="anonymous">
+		<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+		<link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css')}}"/>
+
+		<style>
+			.source_citation {
+				margin-top: 8px;
+				font-size: 11px;
+			}
+			.source_label {
+				color: #4a5568;
+				font-size: 11px;
+				margin-bottom: 4px;
+				margin-left: 2px;
+				font-weight: 600;
+			}
+			.source_badge {
+				display: inline-block;
+				border-radius: 12px;
+				padding: 3px 10px;
+				margin: 2px 3px;
+				font-size: 11px;
+				font-weight: 500;
+			}
+			/* Medical Book — Blue */
+			.badge_medical_book {
+				background-color: #e8f4fd;
+				border: 1px solid #bee3f8;
+				color: #2b6cb0;
+			}
+			/* WHO Hypertension — Green */
+			.badge_who_hypertension {
+				background-color: #f0fff4;
+				border: 1px solid #9ae6b4;
+				color: #276749;
+			}
+			/* Typing indicator */
+			.typing_dot {
+				display: inline-block;
+				width: 7px;
+				height: 7px;
+				border-radius: 50%;
+				background-color: #90cdf4;
+				margin: 0 2px;
+				animation: bounce 1.2s infinite;
+			}
+			.typing_dot:nth-child(2) { animation-delay: 0.2s; }
+			.typing_dot:nth-child(3) { animation-delay: 0.4s; }
+			@keyframes bounce {
+				0%, 80%, 100% { transform: translateY(0); }
+				40%            { transform: translateY(-6px); }
+			}
+			/* Mic button */
+			.mic_btn {
+				background: none;
+				border: none;
+				cursor: pointer;
+				padding: 0 10px;
+				font-size: 18px;
+				color: #4a90d9;
+				transition: color 0.2s;
+				outline: none;
+			}
+			.mic_btn:hover {
+				color: #2b6cb0;
+			}
+			.mic_btn.recording {
+				color: #e53e3e;
+				animation: pulse 1s infinite;
+			}
+			@keyframes pulse {
+				0%, 100% { opacity: 1; }
+				50%       { opacity: 0.4; }
+			}
+			/* Voice status bar */
+			#voiceStatus {
+				display: none;
+				font-size: 12px;
+				color: #e53e3e;
+				padding: 4px 12px;
+				background-color: #fff5f5;
+				border-top: 1px solid #fed7d7;
+				text-align: center;
+				font-weight: 500;
+			}
+		</style>
+	</head>
+	
+	<body>
+		<div class="container-fluid h-100">
+			<div class="row justify-content-center h-100">		
+				<div class="col-md-8 col-xl-6 chat">
+					<div class="card">
+						<div class="card-header msg_head">
+							<div class="d-flex bd-highlight">
+								<div class="img_cont">
+									<img src="https://cdn.pfizer.com/pfizercom/screen_shot_2020-02-20_at_1.06.10_pm.png" class="rounded-circle user_img">
+									<span class="online_icon"></span>
+								</div>
+								<div class="user_info">
+									<span>Medical Chatbot</span>
+									<p>Ask me anything!</p>
+								</div>
+								<div class="ml-auto d-flex align-items-center">
+									<button 
+										onclick="clearChat()" 
+										class="btn btn-sm btn-outline-light" 
+										title="Clear Chat">
+										<i class="fas fa-trash-alt"></i> Clear Chat
+									</button>
+								</div>
+							</div>
+						</div>
+
+						<div id="messageFormeight" class="card-body msg_card_body">
+						</div>
+
+						<!-- Voice status bar -->
+						<div id="voiceStatus">
+							<i class="fas fa-circle"></i> Listening... speak now
+						</div>
+
+						<div class="card-footer">
+							<form id="messageArea" class="input-group">
+								<input type="text" id="text" name="msg" placeholder="Type or speak your message..." autocomplete="off" class="form-control type_msg" required/>
+								<div class="input-group-append d-flex align-items-center">
+									<button type="button" id="micBtn" class="mic_btn" title="Click to speak">
+										<i class="fas fa-microphone" id="micIcon"></i>
+									</button>
+									<button type="submit" id="send" class="input-group-text send_btn">
+										<i class="fas fa-location-arrow"></i>
+									</button>
+								</div>
+							</form>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+		
+		<script>
+			$(document).ready(function() {
+
+				// ─── Voice Input ─────────────────────────────────────────────
+				var recognition = null;
+				var isRecording = false;
+
+				if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+					var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+					recognition = new SpeechRecognition();
+					recognition.continuous     = false;
+					recognition.interimResults = true;
+					recognition.lang           = 'en-US';
+
+					recognition.onresult = function(event) {
+						var transcript = "";
+						for (var i = event.resultIndex; i < event.results.length; i++) {
+							transcript += event.results[i][0].transcript;
+						}
+						$("#text").val(transcript);
+					};
+
+					recognition.onend = function() {
+						stopRecording();
+						var text = $("#text").val().trim();
+						if (text.length > 0) {
+							$("#messageArea").submit();
+						}
+					};
+
+					recognition.onerror = function(event) {
+						stopRecording();
+						if (event.error === 'not-allowed') {
+							alert("Microphone access denied. Please allow microphone access in your browser settings.");
+						} else if (event.error === 'no-speech') {
+							$("#text").attr("placeholder", "No speech detected. Try again.");
+							setTimeout(function() {
+								$("#text").attr("placeholder", "Type or speak your message...");
+							}, 3000);
+						}
+					};
+
+				} else {
+					$("#micBtn").hide();
+				}
+
+				function startRecording() {
+					isRecording = true;
+					recognition.start();
+					$("#micBtn").addClass("recording");
+					$("#micIcon").removeClass("fa-microphone").addClass("fa-stop");
+					$("#voiceStatus").slideDown(200);
+					$("#text").val("").attr("placeholder", "Listening...");
+				}
+
+				function stopRecording() {
+					isRecording = false;
+					$("#micBtn").removeClass("recording");
+					$("#micIcon").removeClass("fa-stop").addClass("fa-microphone");
+					$("#voiceStatus").slideUp(200);
+					$("#text").attr("placeholder", "Type or speak your message...");
+				}
+
+				$("#micBtn").on("click", function() {
+					if (!recognition) return;
+					if (isRecording) {
+						recognition.stop();
+						stopRecording();
+					} else {
+						startRecording();
+					}
+				});
+
+
+				// ─── Badge Helper ─────────────────────────────────────────────
+				function getBadgeInfo(src) {
+					var book        = src.book_name  || src.book || "";
+					var source_type = src.source_type || "";
+					var bookLower   = book.toLowerCase();
+
+					// Medical Book — Blue
+					if (source_type === "Medical Book") {
+						return {
+							badgeClass: "badge_medical_book",
+							icon:       "fa-book",
+							label:      "Medical Book"
+						};
+					}
+
+					// WHO Hypertension — Green
+					if (bookLower.includes("hypertension") || bookLower.includes("hypertendion")) {
+						return {
+							badgeClass: "badge_who_hypertension",
+							icon:       "fa-heartbeat",
+							label:      "WHO Hypertension Guideline"
+						};
+					}
+
+					// Fallback
+					return {
+						badgeClass: "badge_medical_book",
+						icon:       "fa-file-medical",
+						label:      source_type || "Medical Source"
+					};
+				}
+
+
+				// ─── Chat Submit ──────────────────────────────────────────────
+				$("#messageArea").on("submit", function(event) {
+					event.preventDefault();
+
+					const date     = new Date();
+					const hour     = date.getHours();
+					const minute   = date.getMinutes();
+					const str_time = hour + ":" + (minute < 10 ? "0" + minute : minute);
+
+					var rawText = $("#text").val();
+					if (!rawText.trim()) return;
+
+					var userHtml = `
+						<div class="d-flex justify-content-end mb-4">
+							<div class="msg_cotainer_send">
+								${rawText}
+								<span class="msg_time_send">${str_time}</span>
+							</div>
+							<div class="img_cont_msg">
+								<img src="https://i.ibb.co/d5b84Xw/Untitled-design.png" class="rounded-circle user_img_msg">
+							</div>
+						</div>`;
+
+					$("#text").val("");
+					$("#messageFormeight").append(userHtml);
+
+					var typingHtml = `
+						<div id="typingIndicator" class="d-flex justify-content-start mb-4">
+							<div class="img_cont_msg">
+								<img src="https://cdn.pfizer.com/pfizercom/screen_shot_2020-02-20_at_1.06.10_pm.png" class="rounded-circle user_img_msg">
+							</div>
+							<div class="msg_cotainer">
+								<span class="typing_dot"></span>
+								<span class="typing_dot"></span>
+								<span class="typing_dot"></span>
+							</div>
+						</div>`;
+					$("#messageFormeight").append(typingHtml);
+					scrollToBottom();
+
+					$.ajax({
+						data: { msg: rawText },
+						type: "POST",
+						url: "/get",
+						dataType: "json"
+					}).done(function(data) {
+						$("#typingIndicator").remove();
+
+						// Build color coded source badges
+						var sourcesHtml = "";
+						if (data.sources && data.sources.length > 0) {
+							sourcesHtml += `<div class="source_citation">`;
+							sourcesHtml += `<div class="source_label"><i class="fas fa-book-open"></i> Sources:</div>`;
+							data.sources.forEach(function(src) {
+								var info = getBadgeInfo(src);
+								sourcesHtml += `
+									<span class="source_badge ${info.badgeClass}">
+										<i class="fas ${info.icon}"></i>
+										[${info.label}] ${src.book} &mdash; Page ${src.page}
+									</span>`;
+							});
+							sourcesHtml += `</div>`;
+						}
+
+						var botHtml = `
+							<div class="d-flex justify-content-start mb-4">
+								<div class="img_cont_msg">
+									<img src="https://cdn.pfizer.com/pfizercom/screen_shot_2020-02-20_at_1.06.10_pm.png" class="rounded-circle user_img_msg">
+								</div>
+								<div class="msg_cotainer">
+									${data.answer}
+									<span class="msg_time">${str_time}</span>
+									${sourcesHtml}
+								</div>
+							</div>`;
+
+						$("#messageFormeight").append($.parseHTML(botHtml));
+						scrollToBottom();
+					});
+				});
+
+
+				// ─── Clear Chat ───────────────────────────────────────────────
+				function clearChat() {
+					$.ajax({
+						type: "POST",
+						url: "/clear",
+					}).done(function() {
+						$("#messageFormeight").empty();
+					});
+				}
+				window.clearChat = clearChat;
+
+
+				// ─── Auto Scroll ──────────────────────────────────────────────
+				function scrollToBottom() {
+					var msgBody = $("#messageFormeight");
+					msgBody.scrollTop(msgBody.prop("scrollHeight"));
+				}
+
+			});
+		</script>
+        
+	</body>
+</html>
